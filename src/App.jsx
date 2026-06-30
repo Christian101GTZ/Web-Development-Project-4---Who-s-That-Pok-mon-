@@ -32,20 +32,35 @@ function App() {
 
   // Finds a random Pokémon that has not been identified or banned
   const discoverPokemon = async () => {
-    const MAX_SEARCH_ATTEMPTS = 300;
-    let searchAttempts = 0;
-    let pokemonFound = false;
+    const validPokemonIds = [];
 
-    if (history.length === 150) {
+    // Build a list of Pokémon IDs that have not been identified yet
+    for (let id = 1; id <= 150; id++) {
+      const alreadyIdentified = history.some((pokemon) => pokemon.id === id);
+
+      if (!alreadyIdentified) {
+        validPokemonIds.push(id);
+      }
+    }
+
+    if (validPokemonIds.length === 0) {
       setMessage("Congratulations! You've identified all 150 original Pokémon!");
       return;
     }
 
-    while (!pokemonFound && searchAttempts < MAX_SEARCH_ATTEMPTS) {
-      const randomId = Math.floor(Math.random() * 150) + 1;
+    let pokemonFound = false;
+
+    // Try random Pokémon from the valid list until one passes the ban-list check
+    while (!pokemonFound && validPokemonIds.length > 0) {
+      const randomIndex = Math.floor(Math.random() * validPokemonIds.length);
+      const randomId = validPokemonIds[randomIndex];
 
       pokemonFound = await callAPI(randomId);
-      searchAttempts++;
+
+      // Remove this ID if it was banned or already invalid
+      if (!pokemonFound) {
+        validPokemonIds.splice(randomIndex, 1);
+      }
     }
 
     if (!pokemonFound) {
@@ -137,6 +152,7 @@ function App() {
       return [
         ...prevHistory,
         {
+          id: currentPokemon.id,
           name: currentPokemon.name,
           image: currentPokemon.sprites.other['official-artwork'].front_default,
         },
