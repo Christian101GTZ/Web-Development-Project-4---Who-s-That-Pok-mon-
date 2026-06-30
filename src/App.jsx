@@ -11,10 +11,10 @@ function App() {
   // Stores the user's current guess
   const [guess, setGuess] = useState('');
 
-  // Stores feedback messages like "Correct!" or "Try again!"
+  // Stores feedback messages like "Correct!" or error messages
   const [message, setMessage] = useState('');
 
-  // Tracks whether the Pokémon's information should be revealed
+  // Tracks whether the Pokémon's name and description should be revealed
   const [isRevealed, setIsRevealed] = useState(false);
 
   // User gets 3 chances to guess each Pokémon
@@ -32,61 +32,89 @@ function App() {
 
   // Finds a random Pokémon that has not been identified or banned
   const discoverPokemon = async () => {
+    const MAX_SEARCH_ATTEMPTS = 300;
+    let searchAttempts = 0;
+    let pokemonFound = false;
+
     if (history.length === 150) {
       setMessage("Congratulations! You've identified all 150 original Pokémon!");
       return;
     }
 
-    let pokemonFound = false;
-
-    while (!pokemonFound) {
+    while (!pokemonFound && searchAttempts < MAX_SEARCH_ATTEMPTS) {
       const randomId = Math.floor(Math.random() * 150) + 1;
+
       pokemonFound = await callAPI(randomId);
+      searchAttempts++;
+    }
+
+    if (!pokemonFound) {
+      setMessage(
+        'No available Pokémon match your current filters. Try removing a banned type.'
+      );
     }
   };
 
   // Fetches Pokémon data and Pokédex description from PokéAPI
   const callAPI = async (id) => {
-    const pokemonResponse = await fetch(`https://pokeapi.co/api/v2/pokemon/${id}`);
-    const pokemonData = await pokemonResponse.json();
+    try {
+      const pokemonResponse = await fetch(
+        `https://pokeapi.co/api/v2/pokemon/${id}`
+      );
 
-    // Skip Pokémon that were already correctly identified
-    const alreadyIdentified = history.some(
-      (pokemon) => pokemon.name === pokemonData.name
-    );
+      if (!pokemonResponse.ok) {
+        throw new Error('Could not fetch Pokémon data.');
+      }
 
-    if (alreadyIdentified) return false;
+      const pokemonData = await pokemonResponse.json();
 
-    // Skip Pokémon if one of its types is banned
-    const pokemonTypes = pokemonData.types.map((type) => type.type.name);
-    const isBanned = pokemonTypes.some((type) => banList.includes(type));
+      // Skip Pokémon that were already correctly identified
+      const alreadyIdentified = history.some(
+        (pokemon) => pokemon.name === pokemonData.name
+      );
 
-    if (isBanned) return false;
+      if (alreadyIdentified) return false;
 
-    // Second API call gets the Pokédex description
-    const speciesResponse = await fetch(
-      `https://pokeapi.co/api/v2/pokemon-species/${id}`
-    );
-    const speciesData = await speciesResponse.json();
+      // Skip Pokémon if one of its types is banned
+      const pokemonTypes = pokemonData.types.map((type) => type.type.name);
+      const isBanned = pokemonTypes.some((type) => banList.includes(type));
 
-    // Find the first English Pokédex entry
-    const descriptionEntry = speciesData.flavor_text_entries.find(
-      (entry) => entry.language.name === 'en'
-    );
+      if (isBanned) return false;
 
-    // Clean weird spacing from API text
-    const description = descriptionEntry.flavor_text
-      .replace(/\f/g, ' ')
-      .replace(/\n/g, ' ');
+      // Second API call gets the Pokédex description
+      const speciesResponse = await fetch(
+        `https://pokeapi.co/api/v2/pokemon-species/${id}`
+      );
 
-    // Save Pokémon data and description together
-    setCurrentPokemon({
-      ...pokemonData,
-      description,
-    });
+      if (!speciesResponse.ok) {
+        throw new Error('Could not fetch Pokédex description.');
+      }
 
-    resetGame();
-    return true;
+      const speciesData = await speciesResponse.json();
+
+      // Find the first English Pokédex entry
+      const descriptionEntry = speciesData.flavor_text_entries.find(
+        (entry) => entry.language.name === 'en'
+      );
+
+      // Clean weird spacing from API text
+      const description = descriptionEntry
+        ? descriptionEntry.flavor_text.replace(/\f/g, ' ').replace(/\n/g, ' ')
+        : 'No Pokédex description available.';
+
+      // Save Pokémon data and description together
+      setCurrentPokemon({
+        ...pokemonData,
+        description,
+      });
+
+      resetGame();
+      return true;
+    } catch (error) {
+      console.error(error);
+      setMessage('Something went wrong while loading Pokémon data. Please try again.');
+      return true;
+    }
   };
 
   // Resets the guessing state for a new Pokémon
